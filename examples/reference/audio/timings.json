@@ -1,0 +1,68 @@
+{
+  "s01": {
+    "b1": {
+      "file": "audio/s01_b1.wav",
+      "duration": 2.972,
+      "hash": "2b3496d09722",
+      "voice": "say:Samantha@175"
+    },
+    "b2": {
+      "file": "audio/s01_b2.wav",
+      "duration": 3.813,
+      "hash": "c8e136dc63e9",
+      "voice": "say:Samantha@175"
+    },
+    "b3": {
+      "file": "audio/s01_b3.wav",
+      "duration": 6.162,
+      "hash": "f601ff32096f",
+      "voice": "say:Samantha@175"
+    }
+  },
+  "s02": {
+    "b1": {
+      "file": "audio/s02_b1.wav",
+      "duration": 5.015,
+      "hash": "e67d5a44acb4",
+      "voice": "say:Samantha@175"
+    },
+    "b2": {
+      "file": "audio/s02_b2.wav",
+      "duration": 4.327,
+      "hash": "53719752e620",
+      "voice": "say:Samantha@175"
+    },
+    "b3": {
+      "file": "audio/s02_b3.wav",
+      "duration": 5.773,
+      "hash": "ae9db3707e44",
+      "voice": "say:Samantha@175"
+    },
+    "b4": {
+      "file": "audio/s02_b4.wav",
+      "duration": 3.242,
+      "hash": "628f213792b8",
+      "voice": "say:Samantha@175"
+    }
+  },
+  "s03": {
+    "b1": {
+      "file": "audio/s03_b1.wav",
+      "duration": 6.465,
+      "hash": "e34e1e8dcb35",
+      "voice": "say:Samantha@175"
+    },
+    "b2": {
+      "file": "audio/s03_b2.wav",
+      "duration": 3.446,
+      "hash": "d037922c48ae",
+      "voice": "say:Samantha@175"
+    },
+    "b3": {
+      "file": "audio/s03_b3.wav",
+      "duration": 6.665,
+      "hash": "cbb42a3b8add",
+      "voice": "say:Samantha@175"
+    }
+  }
+}

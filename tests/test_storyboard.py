@@ -1,4 +1,5 @@
 import copy
+from pathlib import Path
 
 import pytest
 import yaml
@@ -34,6 +35,11 @@ BASE = {
         }
     ],
 }
+
+
+def test_reference_storyboard_is_clean():
+    ref = Path(__file__).parents[1] / "examples" / "reference"
+    assert not [i for i in lint(ref) if i.level == "error"]
 
 
 def test_lint_clean_minimal(tmp_path):

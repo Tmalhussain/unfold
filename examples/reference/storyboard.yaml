@@ -1,0 +1,86 @@
+title: Why one plus a half plus a quarter equals two
+guiding_question: How can infinitely many pieces add up to something finite?
+key_insight: Each piece covers exactly half of the gap that is left, so the gap shrinks to zero and the total closes in on two.
+
+symbols:
+  "S": sky
+  "s_n": mint
+  "n": amber
+
+pronounce: {}
+
+scenes:
+  - id: s01
+    title: Halving a bar
+    new_ideas: [halving the gap]
+    beats:
+      - id: b1
+        say: Take a bar of length two. Fill in the first half of it.
+        show: An empty bar with 0 and 2 marked at its ends; the left half fills with blue and gets the label 1.
+      - id: b2
+        say: Now fill half of what is left, then half of that, and keep going.
+        show: Pieces of length one half, one quarter, one eighth, one sixteenth, and one thirty-second grow in from the left in two alternating shades of blue, the first four labeled.
+        transform: true
+      - id: b3
+        say: Every piece covers half of the remaining gap, so the pieces never spill past the end. They close in on two.
+        show: The bar moves up; a box marks its right end, and a magnified inset below shows the last pieces, the remaining gap with a double arrow labeled gap, the end at 2, and the zoom factor. The inset always shows the piece before last, the last piece, and the gap,. Twice, a new piece fills half the gap (on the main bar too), then the inset zooms in 2x and the box shrinks, so the picture is back to the same shape. The 2 at the end of the main bar is emphasized and a caption names the rule.
+        text: [each piece fills half the gap]
+        hard: true
+
+  - id: s02
+    title: The algebra
+    new_ideas: [shift trick]
+    beats:
+      - id: b1
+        say: Call the total S. It is one, plus a half, plus a quarter, and so on forever.
+        show: The sum is written term by term at the center of the screen, S first.
+        introduces: ["S"]
+        math:
+          - tex: 'S = 1 + \tfrac{1}{2} + \tfrac{1}{4} + \tfrac{1}{8} + \cdots'
+            illustration: true
+      - id: b2
+        say: Halve every term. You get the same sum, just missing its first piece.
+        show: The sum moves up; a copy slides down and morphs into one half of S, with each of its terms directly under the same term in the first sum, so the lower line starts one place to the right.
+        transform: true
+        math:
+          - tex: '\tfrac{1}{2} S = \tfrac{1}{2} + \tfrac{1}{4} + \tfrac{1}{8} + \cdots'
+            illustration: true
+      - id: b3
+        say: Subtract the two. Every term after the first cancels, so S minus half of S is just one.
+        show: A minus sign in a gutter to the left of both lines and a rule under them turn the two lines into a written subtraction; each term dims together with the one under it and the plus before it, and the lone 1 in the top line is boxed; what survives is written under the rule as S minus half S equals 1.
+        transform: true
+        hard: true
+        math:
+          - tex: 'S - \frac{1}{2} S = 1'
+            derived: true
+      - id: b4
+        say: So half of S is one, which makes S equal to two.
+        show: The lines above clear away; S minus half S becomes half S equals 1, then S equals 2, large and boxed at the center.
+        transform: true
+        math:
+          - tex: '\frac{1}{2} S = 1'
+            derived: true
+          - tex: 'S = 2'
+            derived: true
+
+  - id: s03
+    title: Watching it converge
+    new_ideas: [convergence]
+    beats:
+      - id: b1
+        say: Plot the running total after each step. After n steps it is two, minus one over two to the n minus one.
+        show: Axes with step n across and the running total up; dots appear one by one; the formula for s n appears below.
+        introduces: ["n", "s_n"]
+        math:
+          - tex: 's_n = 2 - \frac{1}{2^{n-1}}'
+            derived: true
+            check: {at: {n: 3}, value: 1.75}
+      - id: b2
+        say: Each dot sits halfway between the one before it and the line at two.
+        show: A dashed blue line at height 2 (the y axis is labeled 0.5, 1, 1.5, 2); rose gap bars from the first four dots up to the line, the first three labeled 1, one half, one quarter.
+        transform: true
+      - id: b3
+        say: The gap halves every time, so the total gets as close to two as you like. That is what it means for the sum to equal two.
+        show: A box marks dots 4 to 6 near the line; it grows into a zoomed plot in the empty lower right, with its own axis labels (1.9 and 2 up the side, n = 4, 5, 6 along the bottom), showing those three dots with gap bars labeled one eighth, one sixteenth, one thirty-second; a caption states that the gap halves every step.
+        text: [the gap halves every step]
+        hard: true

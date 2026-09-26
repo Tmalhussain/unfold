@@ -1,0 +1,49 @@
+{
+  "counts": {
+    "illustration": 2,
+    "unchecked": 2,
+    "verified": 1
+  },
+  "items": [
+    {
+      "scene": "s02",
+      "beat": "b1",
+      "index": 0,
+      "tex": "S = 1 + \\tfrac{1}{2} + \\tfrac{1}{4} + \\tfrac{1}{8} + \\cdots",
+      "status": "illustration",
+      "detail": "not a claim"
+    },
+    {
+      "scene": "s02",
+      "beat": "b2",
+      "index": 0,
+      "tex": "\\tfrac{1}{2} S = \\tfrac{1}{2} + \\tfrac{1}{4} + \\tfrac{1}{8} + \\cdots",
+      "status": "illustration",
+      "detail": "not a claim"
+    },
+    {
+      "scene": "s02",
+      "beat": "b3",
+      "index": 0,
+      "tex": "S - \\tfrac{1}{2} S = 1",
+      "status": "unchecked",
+      "detail": "no `check` given"
+    },
+    {
+      "scene": "s02",
+      "beat": "b3",
+      "index": 1,
+      "tex": "S = 2",
+      "status": "unchecked",
+      "detail": "no `check` given"
+    },
+    {
+      "scene": "s03",
+      "beat": "b1",
+      "index": 0,
+      "tex": "s_n = 2 - \\frac{1}{2^{n-1}}",
+      "status": "verified",
+      "detail": "= 1.75000000000000"
+    }
+  ]
+}
