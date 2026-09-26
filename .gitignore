@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+
+# videos and render outputs
+videos/
+.media/
+**/.media/
+examples/reference/renders/
+examples/reference/frames/
+examples/reference/final/
+examples/reference/checks/*.layout.json
+examples/reference/checks/*.critic_input.md
