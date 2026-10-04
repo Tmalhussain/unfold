@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from urllib.parse import urlparse
 
+from . import jobs
 from .project import final_video, load_json, settings, storyboard
 from .voice import default_voice, voiced_scenes
 
@@ -153,6 +154,7 @@ def summary(video: Path) -> dict:
         "stage_label": current["label"] if current else "Done",
         "progress": sum(s["done"] for s in steps) / len(steps),
         "scene_states": [r["state"] for r in rows],
+        "job": jobs.status(video),
         "updated": max((p.stat().st_mtime for p in video.iterdir()), default=0),
     }
 
@@ -170,4 +172,5 @@ def detail(video: Path) -> dict:
         "transcript": transcript(video) if final_video(video) else [],
         "review": load_json(video / "checks" / "review.json"),
         "math": load_json(video / "checks" / "mathcheck.json").get("counts", {}),
+        "activity": jobs.activity(video),
     }

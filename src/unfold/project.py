@@ -21,7 +21,11 @@ def video_dir(name: str | os.PathLike) -> Path:
     """A video by folder path, or by name under the videos folder."""
     for path in (Path(name).expanduser(), VIDEOS / str(name)):
         if path.is_dir():
-            return path.resolve()
+            found = path.resolve()
+            job = os.environ.get("UNFOLD_JOB")
+            if job and found != Path(job).resolve():
+                raise SystemExit(f"this background run can only work on {Path(job).name}")
+            return found
     raise SystemExit(f"no video folder named {name!r} (looked in {VIDEOS})")
 
 

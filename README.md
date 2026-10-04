@@ -5,6 +5,8 @@ Turn a research paper into a narrated, animated explainer video in the style of 
 Give Unfold an arXiv link or a PDF. Claude reads the paper, plans a story around one question, writes a
 storyboard, records the narration, and writes animation code for every scene. A separate reviewer
 critiques each rendered scene until it passes, and the result is an MP4 with chapters and subtitles.
+A local web app lets you start videos, watch them being made, and watch the results with chapters
+and a synced transcript.
 
 ## Requirements
 
@@ -27,7 +29,12 @@ free, offline narration voice, then run `unfold voices --install kokoro` (downlo
 
 ## Use
 
-Open Claude Code in this folder and run:
+**In the browser.** Run `unfold web`. Paste an arXiv link or drop a PDF, say who it is for and how long
+it should be, and press **Make video**. The page shows each step as Claude works through it in the
+background, with every scene's latest frame as it renders. Finished videos play with chapters and a
+transcript you can click to jump around.
+
+**In Claude Code.** Open Claude Code in this folder and run:
 
 ```
 /unfold 1412.6980 level=grad minutes=5
@@ -42,6 +49,7 @@ OpenAI and ElevenLabs voices read their keys from `OPENAI_API_KEY` and `ELEVENLA
 
 | Command | What it does |
 | --- | --- |
+| `unfold web [--port 8765]` | The web app |
 | `unfold new <arxiv id or pdf>` | Create `videos/<name>/` and ingest the paper |
 | `unfold lint <video>` | Check `storyboard.yaml` against the visual grammar rules |
 | `unfold voice <video>` | Record one clip per beat |

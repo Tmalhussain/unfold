@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
@@ -26,6 +27,10 @@ from .voice import (
 
 
 def cmd_new(a):
+    if os.environ.get("UNFOLD_JOB"):
+        raise SystemExit(
+            "this background run already has its video; resume it with `unfold status`"
+        )
     video, paper = new_video(a.source, a.level, a.minutes, a.focus, a.voice, a.name)
     print(f"video folder: {video}")
     print(summary(paper))
@@ -70,6 +75,8 @@ def _print_defects(defects: list[dict]) -> None:
 def cmd_render(a):
     from .render import CodeError, render_scene
 
+    if a.no_sandbox and os.environ.get("UNFOLD_JOB"):
+        raise SystemExit("--no-sandbox is not available in background runs")
     video = video_dir(a.video)
 
     def render(sid):
@@ -150,6 +157,8 @@ def cmd_status(a):
     print(f"\nlevel {info['level']}, target {info['minutes']} min, voice {info['voice']}")
     if math:
         print("math:", ", ".join(f"{k} {v}" for k, v in sorted(math.items())))
+    if info["job"]:
+        print(f"background run: {info['job']['state']}")
     final = final_video(video)
     print(f"final video: {final}" if final else f"next: {info['stage_label'].lower()}")
 
@@ -193,6 +202,12 @@ def cmd_where(a):
     print(f"skill:  {REPO / 'skill'}")
 
 
+def cmd_web(a):
+    from .web import serve
+
+    serve(a.port, open_browser=not a.no_open)
+
+
 TOOLS = {
     "ffmpeg": "brew install ffmpeg",
     "ffprobe": "brew install ffmpeg",
@@ -200,6 +215,7 @@ TOOLS = {
     "dvisvgm": "brew install dvisvgm",
     "say": "macOS only",
     "sandbox-exec": "macOS only; renders run unsandboxed without it",
+    "claude": "optional: needed by `unfold web` to make videos (https://claude.com/claude-code)",
 }
 
 
@@ -347,6 +363,10 @@ def main(argv=None):
         video=True,
     )
     s.add_argument("--all", action="store_true", help="also delete full-quality scene renders")
+
+    s = command("web", cmd_web, "open the Unfold web app")
+    s.add_argument("--port", type=int, default=8765)
+    s.add_argument("--no-open", action="store_true", help="don't open a browser")
 
     command("where", cmd_where, "print where the repo, videos, and skill are")
     command("doctor", cmd_doctor, "check that everything a render needs is installed")

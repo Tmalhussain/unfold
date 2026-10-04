@@ -23,3 +23,4 @@ case ":$PATH:" in
 esac
 command -v claude >/dev/null || echo "Install Claude Code to make videos: https://claude.com/claude-code"
 echo "For a natural free voice: unfold voices --install kokoro"
+echo "Then start the web app: unfold web"
