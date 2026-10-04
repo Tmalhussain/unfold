@@ -10,10 +10,13 @@ the rest.
   write `checks/sNN.layout.json`. Changes here affect every video: re-render the reference video after.
 - `src/unfold/texsplit.py`: splits LaTeX so symbols color correctly (no Manim import; used by lint).
 - `src/unfold/{ingest,storyboard,voice,render,mathcheck,assemble,cli}.py`: pipeline stages and CLI.
-- `src/unfold/{library,jobs,web}.py`, `src/unfold/static/`: the web app (`unfold web`). Standard library
+- `src/unfold/{library,jobs,ask,web}.py`, `src/unfold/static/`: the web app (`unfold web`). Standard library
   HTTP server on localhost; no build step for the frontend (plain HTML, CSS, JS). Background runs are
   `claude -p "/unfold <name> autopilot"` started inside the video folder: they may run only `unfold`
   (pinned to that video by UNFOLD_JOB, sandbox forced on), edit only that folder, and read the repo.
+  Questions on the watch page go to `claude -p --safe-mode --tools ""` (no tools, the user's settings
+  skipped) with the video outline, notes, and paper as context; suggestions are cached in
+  `<video>/questions.json`.
 - `examples/reference/`: hand-written reference video; the skill copies its patterns.
 - `videos/<name>/`: one folder per video (gitignored).
 

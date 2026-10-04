@@ -480,6 +480,213 @@ function transcript(lines, spans, seek) {
   return { el: h("aside", { class: "transcript", "aria-label": "Transcript" }, scroll), update };
 }
 
+// Questions while watching
+
+function inline(text, seek) {
+  const parts = [];
+  const pattern = /\[(\d+):(\d{2})\]|\*\*([^*]+)\*\*|\*([^*\s][^*]*)\*|`([^`]+)`/g;
+  let last = 0;
+  for (const m of text.matchAll(pattern)) {
+    parts.push(text.slice(last, m.index));
+    if (m[1]) {
+      const at = Number(m[1]) * 60 + Number(m[2]);
+      const label = `${m[1]}:${m[2]}`;
+      parts.push(h("button", { class: "stamp", type: "button", onclick: () => seek(at) }, label));
+    } else if (m[3]) parts.push(h("strong", null, m[3]));
+    else if (m[4]) parts.push(h("em", null, m[4]));
+    else parts.push(h("code", null, m[5]));
+    last = m.index + m[0].length;
+  }
+  parts.push(text.slice(last));
+  return parts;
+}
+
+function richText(text, seek) {
+  return text.trim().split(/\n{2,}/).map((block) => {
+    const lines = block.split("\n");
+    const bullet = /^\s*([-*•]|\d+\.) /;
+    if (lines.every((line) => bullet.test(line))) {
+      const items = lines.map((line) => h("li", null, inline(line.replace(bullet, ""), seek)));
+      return h("ul", null, items);
+    }
+    return h("p", null, inline(block, seek));
+  });
+}
+
+async function streamAnswer(name, payload, onEvent, signal) {
+  const response = await fetch(`/api/videos/${encodeURIComponent(name)}/ask`, {
+    method: "POST",
+    headers: { "X-Unfold": "1", "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    signal,
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || `The server answered ${response.status}.`);
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let end;
+    while ((end = buffer.indexOf("\n")) >= 0) {
+      const line = buffer.slice(0, end).trim();
+      buffer = buffer.slice(end + 1);
+      if (line) onEvent(JSON.parse(line));
+    }
+  }
+}
+
+function remembered(name) {
+  try {
+    return JSON.parse(localStorage.getItem(`unfold:questions:${name}`)) || [];
+  } catch {
+    return [];
+  }
+}
+
+function remember(name, asked) {
+  try {
+    localStorage.setItem(`unfold:questions:${name}`, JSON.stringify(asked.slice(0, 30)));
+  } catch {
+    // private windows and full storage just mean the questions are not kept
+  }
+}
+
+function questions(video, player, spans) {
+  const asked = remembered(video.name);
+  const hint = h("p", { class: "ask__hint" });
+  const chips = h("div", { class: "ask__chips" });
+  const input = h("input", {
+    name: "question",
+    autocomplete: "off",
+    placeholder: "Ask about what you're watching",
+    "aria-label": "Your question",
+  });
+  const submit = h("button", { class: "button button--primary", type: "submit" }, "Ask");
+  const thread = h("ol", { class: "thread", "aria-live": "polite" });
+  let suggested = null;
+  let scene = -1;
+  let running = null;
+
+  const seek = (t) => {
+    player.currentTime = t;
+    player.play();
+  };
+  const sceneAt = (t) => Math.max(0, spans.findIndex((span) => t >= span.start && t < span.end));
+
+  const card = (item, { latest = false } = {}) => {
+    const answer = h("div", { class: "qa__a" }, item.a ? richText(item.a, seek) : null);
+    const when = h("button", { class: "qa__when", type: "button", onclick: () => seek(item.at) },
+      `Asked at ${clock(item.at)}, during ${item.title}`);
+    const play = () => player.play();
+    const resume = latest
+      ? h("button", { class: "quiet", type: "button", onclick: play }, "Keep watching")
+      : null;
+    const el = h("li", { class: "qa" }, h("p", { class: "qa__q" }, item.q), when, answer, resume);
+    return { el, answer };
+  };
+
+  const showChips = () => {
+    const id = video.scenes[scene]?.id;
+    const list = suggested?.[id] || [];
+    const chip = (q) => h("button", { class: "chip", type: "button", onclick: () => ask(q) }, q);
+    chips.replaceChildren(...list.map(chip));
+  };
+
+  const ask = async (question) => {
+    question = question.trim();
+    if (!question || running) return;
+    player.pause();
+    input.value = "";
+    const at = player.currentTime;
+    const item = { q: question, a: "", at, title: spans[sceneAt(at)]?.title || "the video" };
+    const { el, answer } = card(item, { latest: true });
+    thread.querySelectorAll(".qa .quiet").forEach((b) => b.remove());
+    thread.prepend(el);
+    answer.classList.add("is-writing");
+    running = new AbortController();
+    submit.textContent = "Stop";
+    const history = asked.slice(0, 3).reverse();
+    let finished = false;
+    try {
+      await streamAnswer(video.name, { question, at, history }, (event) => {
+        if (event.text) {
+          item.a += event.text;
+          answer.replaceChildren(...richText(item.a, seek));
+        } else if (event.done) {
+          finished = true;
+        } else if (event.error) {
+          answer.append(h("p", { class: "error" }, event.error));
+        }
+      }, running.signal);
+    } catch (err) {
+      answer.append(h("p", { class: err.name === "AbortError" ? "qa__stopped" : "error" },
+        err.name === "AbortError" ? "Stopped." : err.message));
+    } finally {
+      answer.classList.remove("is-writing");
+      running = null;
+      submit.textContent = "Ask";
+      if (finished) {
+        asked.unshift(item);
+        remember(video.name, asked);
+      }
+    }
+  };
+
+  const loadSuggestions = async () => {
+    const url = `/api/videos/${encodeURIComponent(video.name)}/questions`;
+    let state = await api(url);
+    if (state.state === "missing") state = await api(url, { method: "POST" });
+    if (state.state === "working") {
+      hint.textContent = "Writing suggested questions for each scene…";
+      setTimeout(loadSuggestions, 3000);
+      return;
+    }
+    if (state.state === "ready") {
+      suggested = state.scenes;
+      hint.textContent = "Suggested for this scene";
+      showChips();
+    } else {
+      hint.textContent = "";
+    }
+  };
+  loadSuggestions().catch(() => (hint.textContent = ""));
+
+  asked.forEach((item) => thread.append(card(item).el));
+  document.addEventListener("keydown", (event) => {
+    const typing = ["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement?.tagName);
+    if (event.key === "/" && !typing) {
+      event.preventDefault();
+      input.focus();
+    }
+  });
+
+  const form = h("form", {
+    class: "ask__bar",
+    onsubmit: (event) => {
+      event.preventDefault();
+      if (running) running.abort();
+      else ask(input.value);
+    },
+  }, input, submit);
+
+  return {
+    el: h("section", { class: "ask", "aria-label": "Ask about the video" },
+      hint, chips, form, thread),
+    update(t) {
+      const i = sceneAt(t);
+      if (i !== scene) {
+        scene = i;
+        showChips();
+      }
+    },
+  };
+}
+
 function watch(video) {
   const player = h(
     "video",
@@ -504,16 +711,20 @@ function watch(video) {
   const spans = spansFromChapters(video);
   const line = timeline(video.name, spans, { onPick: (span) => seek(span.start) });
   const text = transcript(video.transcript, spans, seek);
+  const asking = questions(video, player, spans);
   player.addEventListener("timeupdate", () => {
     line.update(player.currentTime);
     text.update(player.currentTime);
+    asking.update(player.currentTime);
   });
   app.append(
     ...header(video),
-    h("div", { class: "watch" }, h("div", { class: "watch__main" }, player, line.el), text.el),
+    h("div", { class: "watch" },
+      h("div", { class: "watch__main" }, player, line.el), text.el, asking.el),
     about(video),
   );
   line.update(0);
+  asking.update(0);
 }
 
 function sentence(parts) {

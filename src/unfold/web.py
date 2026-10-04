@@ -16,7 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
-from . import jobs, library
+from . import ask, jobs, library
 from .ingest import LEVELS, new_video
 from .project import VIDEOS, all_videos, ffmpeg, final_video, slugify, video_dir
 from .voice import default_voice, elevenlabs_voices, kokoro_voices, openai_voices, say_voices
@@ -106,6 +106,31 @@ def _voices() -> dict:
     }
 
 
+def _finished(name: str) -> Path:
+    video = _video(name)
+    if not final_video(video):
+        raise HTTPError(HTTPStatus.CONFLICT, "Questions open once the video is finished.")
+    return video
+
+
+def _answer(video: Path, body: dict):
+    question = str(body.get("question", "")).strip()
+    if not question:
+        raise HTTPError(HTTPStatus.BAD_REQUEST, "Type a question first.")
+    if len(question) > 1000:
+        raise HTTPError(HTTPStatus.BAD_REQUEST, "Keep questions under 1,000 characters.")
+    try:
+        at = max(0.0, float(body.get("at") or 0))
+    except (TypeError, ValueError):
+        at = 0.0
+    history = [
+        {"q": str(h.get("q", ""))[:1000], "a": str(h.get("a", ""))[:4000]}
+        for h in body.get("history") or []
+        if isinstance(h, dict)
+    ]
+    return ask.answer(video, question, at, history)
+
+
 def _create(body: dict) -> dict:
     source = str(body.get("source", "")).strip()
     if not source:
@@ -169,6 +194,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(videos)
         if m := re.fullmatch(r"/api/videos/([^/]+)", path):
             return self._json(library.detail(_video(m[1])))
+        if m := re.fullmatch(r"/api/videos/([^/]+)/questions", path):
+            return self._json(ask.suggestions(_video(m[1])))
         if path == "/api/voices":
             return self._json(_voices())
         if m := re.fullmatch(r"/media/([^/]+)/(.+)", path):
@@ -190,6 +217,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(self._upload())
         if path == "/api/videos":
             return self._json(_create(self._body()), HTTPStatus.CREATED)
+        if m := re.fullmatch(r"/api/videos/([^/]+)/questions", path):
+            return self._json(ask.suggest(_finished(m[1])))
+        if m := re.fullmatch(r"/api/videos/([^/]+)/ask", path):
+            return self._stream(_answer(_finished(m[1]), self._body()))
         if m := re.fullmatch(r"/api/videos/([^/]+)/(start|stop)", path):
             try:
                 action = jobs.start if m[2] == "start" else jobs.stop
@@ -217,6 +248,19 @@ class Handler(BaseHTTPRequestHandler):
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(data)
         return {"source": str(dest)}
+
+    def _stream(self, events):
+        """Send events as JSON lines while they are produced, so answers appear as they are written."""
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "application/x-ndjson")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        try:
+            for event in events:
+                self.wfile.write(json.dumps(event).encode() + b"\n")
+                self.wfile.flush()
+        finally:
+            events.close()  # stops Claude if the viewer cancels or leaves
 
     def _json(self, data, status: HTTPStatus = HTTPStatus.OK):
         self._bytes(json.dumps(data).encode(), TYPES[".json"], status, cache="no-store")

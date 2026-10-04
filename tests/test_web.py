@@ -125,6 +125,36 @@ def test_background_runs_may_only_edit_their_own_folder(videos):
     assert not {"Edit", "Write", "Read", "Bash"} & set(rules)
 
 
+def test_questions_stream_as_json_lines(server, monkeypatch):
+    from unfold import ask
+
+    monkeypatch.setattr(
+        ask,
+        "answer",
+        lambda video, q, at, history: iter([{"text": f"{q} at {at}"}, {"done": True}]),
+    )
+    status, headers, body = request(
+        server,
+        "POST",
+        "/api/videos/tiny/ask",
+        {"X-Unfold": "1"},
+        json.dumps({"question": "Why?", "at": 2}).encode(),
+    )
+    assert status == 200 and headers["Content-Type"] == "application/x-ndjson"
+    assert [json.loads(line) for line in body.splitlines()] == [
+        {"text": "Why? at 2.0"},
+        {"done": True},
+    ]
+
+
+def test_questions_wait_for_the_finished_video(server, videos):
+    (videos / "final" / "a-tiny-video.mp4").unlink()
+    status, _, body = request(
+        server, "POST", "/api/videos/tiny/ask", {"X-Unfold": "1"}, b'{"question": "Why?"}'
+    )
+    assert status == 409 and "finished" in json.loads(body)["error"]
+
+
 def test_only_web_links_reach_the_page(videos):
     paper = videos / "paper" / "paper.json"
     paper.write_text(json.dumps({"title": "A Tiny Paper", "url": "javascript:alert(1)"}))
