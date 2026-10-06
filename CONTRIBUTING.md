@@ -16,6 +16,8 @@ the rest.
   HTTP server on localhost; no build step for the frontend (plain HTML, CSS, JS). Background runs are
   `claude -p "/unfold <name> autopilot"` started inside the video folder: they may run only `unfold`
   (pinned to that video by UNFOLD_JOB, sandbox forced on), edit only that folder, and read the repo.
+  They load user settings only and may not write Claude Code config, so no run can plant hooks for
+  the next one.
   Questions on the watch page go to `claude -p --safe-mode --tools ""` (no tools, the user's settings
   skipped) with the video outline, notes, and paper as context; suggestions are cached in
   `<video>/questions.json`.

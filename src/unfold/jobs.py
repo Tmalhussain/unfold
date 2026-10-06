@@ -3,8 +3,11 @@
 The paper is untrusted text, so the run is boxed in: it starts inside the video's
 folder, may edit files only there, may read only the repo and the skill, and may
 run no command but `unfold`. UNFOLD_JOB pins that command to this one video and
-keeps scene renders sandboxed (see project.video_dir and the CLI). Claude's
-stream of events goes to ``<video>/logs/claude.jsonl``.
+keeps scene renders sandboxed (see project.video_dir and the CLI). Claude Code
+settings, hooks, and MCP servers found in the folder are ignored, and no run
+starts while the folder holds any Claude Code config, since a run could plant it
+for the next. The run's record and Claude's stream of events are kept next to
+the folder, in ``<videos>/.runs/<name>/``, where the run cannot rewrite them.
 """
 
 from __future__ import annotations
@@ -21,6 +24,8 @@ from pathlib import Path
 from . import keys
 from .project import REPO
 
+PLANTED = {".claude", ".mcp.json", "claude.md", "claude.local.md"}
+
 
 def allowed_tools(video: Path) -> list[str]:
     return [
@@ -36,6 +41,16 @@ def allowed_tools(video: Path) -> list[str]:
     ]
 
 
+def denied_tools(video: Path) -> list[str]:
+    paths = (".claude/**", ".mcp.json", "**/CLAUDE.md", "**/CLAUDE.local.md")
+    return [f"{tool}(/{video}/{path})" for tool in ("Edit", "Write") for path in paths]
+
+
+def planted_config(video: Path) -> list[str]:
+    """Claude Code config anywhere in the folder, in any letter case (macOS ignores case)."""
+    return [str(p.relative_to(video)) for p in video.rglob("*") if p.name.casefold() in PLANTED]
+
+
 _lock = threading.Lock()
 
 
@@ -44,11 +59,11 @@ class JobError(Exception):
 
 
 def _record_path(video: Path) -> Path:
-    return video / "job.json"
+    return video.parent / ".runs" / video.name / "job.json"
 
 
 def _log_path(video: Path) -> Path:
-    return video / "logs" / "claude.jsonl"
+    return video.parent / ".runs" / video.name / "claude.jsonl"
 
 
 def _read(video: Path) -> dict | None:
@@ -95,11 +110,14 @@ def start(video: Path) -> dict:
     current = status(video)
     if current and current["state"] == "running":
         raise JobError("this video is already being made")
+    if planted := planted_config(video):
+        raise JobError(f"remove the Claude Code config in the video folder first: {planted[0]}")
 
     log = _log_path(video)
-    log.parent.mkdir(exist_ok=True)
+    log.parent.mkdir(parents=True, exist_ok=True)
     cmd = ["claude", "-p", f"/unfold {video.name} autopilot", "--output-format", "stream-json"]
-    cmd += ["--verbose", "--allowedTools", *allowed_tools(video)]
+    cmd += ["--verbose", "--setting-sources", "user", "--strict-mcp-config"]
+    cmd += ["--allowedTools", *allowed_tools(video), "--disallowedTools", *denied_tools(video)]
     offset = log.stat().st_size if log.exists() else 0
     with open(log, "ab") as out:
         env = keys.env()
