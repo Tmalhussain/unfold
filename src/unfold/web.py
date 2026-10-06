@@ -16,7 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
-from . import ask, jobs, library
+from . import ask, jobs, keys, library
 from .ingest import LEVELS, new_video
 from .project import VIDEOS, all_videos, ffmpeg, final_video, slugify, video_dir
 from .voice import default_voice, elevenlabs_voices, kokoro_voices, openai_voices, say_voices
@@ -104,6 +104,14 @@ def _voices() -> dict:
             {"value": f"elevenlabs:{v['id']}", "name": v["name"]} for v in elevenlabs_voices()
         ],
     }
+
+
+def _save_key(body: dict) -> dict:
+    try:
+        keys.save(str(body.get("provider", "")), str(body.get("key") or "")[:500])
+    except ValueError as e:
+        raise HTTPError(HTTPStatus.BAD_REQUEST, str(e)) from None
+    return keys.status()
 
 
 def _finished(name: str) -> Path:
@@ -198,6 +206,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(ask.suggestions(_video(m[1])))
         if path == "/api/voices":
             return self._json(_voices())
+        if path == "/api/keys":
+            return self._json(keys.status())
         if m := re.fullmatch(r"/media/([^/]+)/(.+)", path):
             video, rel = _video(m[1]), m[2]
             if rel == "poster.jpg":
@@ -217,6 +227,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(self._upload())
         if path == "/api/videos":
             return self._json(_create(self._body()), HTTPStatus.CREATED)
+        if path == "/api/keys":
+            return self._json(_save_key(self._body()))
         if m := re.fullmatch(r"/api/videos/([^/]+)/questions", path):
             return self._json(ask.suggest(_finished(m[1])))
         if m := re.fullmatch(r"/api/videos/([^/]+)/ask", path):

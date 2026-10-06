@@ -14,7 +14,7 @@ import tempfile
 import threading
 from pathlib import Path
 
-from . import library
+from . import keys, library
 from .project import load_json, settings, storyboard
 
 MODEL = "opus"  # the newest Opus the installed Claude Code supports
@@ -124,6 +124,7 @@ def _claude(system: str, prompt: str, effort: str) -> subprocess.Popen:
         stderr=subprocess.DEVNULL,
         text=True,
         cwd=tempfile.gettempdir(),
+        env=keys.env(),
     )
     proc.stdin.write(prompt)
     proc.stdin.close()

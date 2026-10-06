@@ -10,6 +10,8 @@ the rest.
   write `checks/sNN.layout.json`. Changes here affect every video: re-render the reference video after.
 - `src/unfold/texsplit.py`: splits LaTeX so symbols color correctly (no Manim import; used by lint).
 - `src/unfold/{ingest,storyboard,voice,render,mathcheck,assemble,cli}.py`: pipeline stages and CLI.
+- `src/unfold/keys.py`: API keys people plug in (Anthropic, OpenAI, ElevenLabs), saved in
+  `~/.config/unfold/keys.json` (never in the repo); environment variables win. `unfold keys` manages them.
 - `src/unfold/{library,jobs,ask,web}.py`, `src/unfold/static/`: the web app (`unfold web`). Standard library
   HTTP server on localhost; no build step for the frontend (plain HTML, CSS, JS). Background runs are
   `claude -p "/unfold <name> autopilot"` started inside the video folder: they may run only `unfold`
@@ -24,7 +26,7 @@ the rest.
 
 - `uv run pytest` (or `.venv/bin/python -m pytest -q tests`): unit tests.
 - `unfold doctor`: check dependencies. `unfold render <video> --scene sNN`: sandboxed low-res render.
-- `unfold web`: the web app at http://localhost:8765. `unfold where`: repo, videos, skill paths.
+- `unfold web`: the web app at http://localhost:8765. `unfold where`: repo, videos, skill, keys paths.
 - `unfold render examples/reference`: smoke test for style changes (expect 0 layout defects).
 
 ## Conventions

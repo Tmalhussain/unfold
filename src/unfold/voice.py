@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
 import shutil
 import subprocess
@@ -21,6 +20,7 @@ import time
 import urllib.request
 from pathlib import Path
 
+from . import keys
 from .project import ffmpeg, settings, ssl_context, storyboard
 
 FALLBACK_VOICE = "say:Samantha@175"
@@ -95,13 +95,13 @@ def say_voices() -> list[str]:
 
 
 def openai_voices() -> list[str]:
-    return list(OPENAI_VOICES) if os.environ.get("OPENAI_API_KEY") else []
+    return list(OPENAI_VOICES) if keys.get("openai") else []
 
 
 def elevenlabs_voices() -> list[dict]:
     """The voices in your ElevenLabs account, as {id, name}; checked at most every ten minutes."""
     global _elevenlabs_cache
-    key = os.environ.get("ELEVENLABS_API_KEY")
+    key = keys.get("elevenlabs")
     if not key:
         return []
     fetched, cached_key, voices = _elevenlabs_cache
@@ -183,10 +183,12 @@ def _post(url: str, headers: dict, body: dict) -> bytes:
 
 
 def _api_key(provider: str) -> str:
-    var = f"{provider.upper()}_API_KEY"
-    if not os.environ.get(var):
-        raise SystemExit(f"{var} is not set")
-    return os.environ[var]
+    key = keys.get(provider)
+    if not key:
+        raise SystemExit(
+            f"no {keys.NAMES[provider]} key: run `unfold keys set {provider}` or add it in the web app"
+        )
+    return key
 
 
 def _openai(text: str, voice: str, out: Path, style: str | None) -> None:

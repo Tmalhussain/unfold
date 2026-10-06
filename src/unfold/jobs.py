@@ -18,6 +18,7 @@ import threading
 import time
 from pathlib import Path
 
+from . import keys
 from .project import REPO
 
 
@@ -101,7 +102,7 @@ def start(video: Path) -> dict:
     cmd += ["--verbose", "--allowedTools", *allowed_tools(video)]
     offset = log.stat().st_size if log.exists() else 0
     with open(log, "ab") as out:
-        env = dict(os.environ)
+        env = keys.env()
         env["UNFOLD_JOB"] = str(video)
         env["PATH"] = f"{REPO / '.venv' / 'bin'}{os.pathsep}{env.get('PATH', '')}"  # finds `unfold`
         proc = subprocess.Popen(

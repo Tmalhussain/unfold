@@ -13,7 +13,7 @@ transcript and a question bar that answers questions about the part of the video
 - macOS (the narration, render sandbox, and fonts use macOS features)
 - [uv](https://docs.astral.sh/uv/), ffmpeg, a TeX Live install, and dvisvgm:
   `brew install uv ffmpeg texlive dvisvgm`
-- [Claude Code](https://claude.com/claude-code), signed in
+- [Claude Code](https://claude.com/claude-code), signed in, or your own Anthropic API key
 
 ## Install
 
@@ -26,6 +26,20 @@ cd unfold
 `setup.sh` installs the Python environment, puts the `unfold` command in `~/.local/bin`, links the
 `/unfold` skill into `~/.claude/skills`, and runs `unfold doctor` to check everything. For a natural,
 free, offline narration voice, then run `unfold voices --install kokoro` (downloads about 340 MB).
+
+## Keys
+
+Unfold runs on your own accounts. Add keys on the web app's **Keys** page or with `unfold keys set`:
+
+| Key | What it is for |
+| --- | --- |
+| Anthropic | Making videos and answering questions. Not needed if you are signed in to Claude Code. |
+| OpenAI | OpenAI narration voices (optional) |
+| ElevenLabs | The voices in your ElevenLabs account (optional) |
+
+Keys are saved in `~/.config/unfold/keys.json`, readable only by you and outside this repo, so they
+never end up in a commit. A key set as an environment variable (`ANTHROPIC_API_KEY`,
+`OPENAI_API_KEY`, `ELEVENLABS_API_KEY`) is used instead of a saved one.
 
 ## Use
 
@@ -44,8 +58,6 @@ question suggested for the scene you are in.
 Claude shows you the plan before anything is rendered, then voices, codes, renders, critiques, and
 assembles the video in `videos/<name>/final/`. `/unfold <video name>` picks a stopped video back up.
 
-OpenAI and ElevenLabs voices read their keys from `OPENAI_API_KEY` and `ELEVENLABS_API_KEY`.
-
 ## Commands
 
 | Command | What it does |
@@ -60,8 +72,9 @@ OpenAI and ElevenLabs voices read their keys from `OPENAI_API_KEY` and `ELEVENLA
 | `unfold status <video>` | Where each scene stands |
 | `unfold list` / `unfold open <video>` | List videos / open a finished one |
 | `unfold clean <video> [--all]` | Delete render caches (keeps plan, audio, code, final video) |
+| `unfold keys [set\|remove <provider>]` | Show, save, or remove API keys |
 | `unfold voices [--preview V] [--install kokoro]` | List voices, preview one, or install the local voice |
-| `unfold where` | Print where the repo, videos, and skill are |
+| `unfold where` | Print where the repo, videos, skill, and saved keys are |
 | `unfold doctor` | Check that everything is installed |
 
 Tests: `uv run pytest`.

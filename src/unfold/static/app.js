@@ -40,6 +40,22 @@ const SCORES = {
 const ACCENTS = { af: "American", am: "American", bf: "British", bm: "British" };
 const LEGEND = ["rendered", "revising", "passed"];
 
+const KEYS = [
+  [
+    "anthropic",
+    "Anthropic",
+    "Makes videos and answers questions. Not needed if you are signed in to Claude Code.",
+    "sk-ant-…",
+  ],
+  ["openai", "OpenAI", "Adds OpenAI narration voices.", "sk-…"],
+  [
+    "elevenlabs",
+    "ElevenLabs",
+    "Adds the voices in your ElevenLabs account.",
+    "Your ElevenLabs API key",
+  ],
+];
+
 const app = document.getElementById("app");
 const images = new Map();
 const ruler = document.createElement("canvas").getContext("2d");
@@ -147,6 +163,7 @@ function route() {
   document.title = "Unfold";
   const match = location.hash.match(/^#\/v\/(.+)$/);
   if (match) showVideo(decodeURIComponent(match[1]));
+  else if (location.hash === "#/keys") showKeys();
   else showLibrary();
   window.scrollTo(0, 0);
 }
@@ -351,6 +368,61 @@ function brief() {
       "Explain it to ", level, " in about ", minutes, " minutes, ",
       "focusing on ", focus, ", narrated by ", voice, "."),
     h("div", { class: "brief__actions" }, submit, note),
+  );
+}
+
+// Keys
+
+async function showKeys() {
+  document.title = "Keys – Unfold";
+  const rows = h("div", { class: "keys" });
+  app.append(
+    backLink(),
+    h("h1", { class: "title" }, "Your keys"),
+    h("p", { class: "byline" },
+      "Unfold runs on your own accounts. Keys are saved on this Mac in ",
+      "~/.config/unfold/keys.json, readable only by you, and each is sent only to the ",
+      "service it belongs to."),
+    rows,
+  );
+  const render = (status) =>
+    rows.replaceChildren(...KEYS.map((entry) => keyRow(entry, status[entry[0]], render)));
+  render(await api("/api/keys"));
+}
+
+function keyRow([provider, name, use, placeholder], info, render) {
+  const input = h("input", {
+    type: "password",
+    autocomplete: "off",
+    spellcheck: "false",
+    placeholder,
+    "aria-label": `${name} key`,
+  });
+  const where = info.source === "environment" ? "Set in your environment" : "Saved";
+  const state = info.set ? `${where}, ends in ${info.ends}` : "Not set";
+  const note = h("p", { class: "key__note", role: "status" }, state);
+  const save = async (key) => {
+    try {
+      render(await api("/api/keys", { method: "POST", body: { provider, key } }));
+    } catch (err) {
+      note.className = "key__note error";
+      note.textContent = err.message;
+    }
+  };
+  const submit = (event) => {
+    event.preventDefault();
+    if (input.value.trim()) save(input.value);
+  };
+  const remove = info.source === "saved"
+    ? h("button", { class: "button", type: "button", onclick: () => save("") }, "Remove")
+    : null;
+  return h(
+    "form",
+    { class: "key", onsubmit: submit },
+    h("div", null, h("h2", null, name), h("p", null, use)),
+    h("div", { class: "key__field" },
+      input, h("button", { class: "button button--primary", type: "submit" }, "Save"), remove),
+    note,
   );
 }
 

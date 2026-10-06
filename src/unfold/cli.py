@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import getpass
 import os
 import shutil
 import subprocess
@@ -11,7 +12,7 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from . import library
+from . import keys, library
 from .ingest import LEVELS, new_video, summary
 from .project import REPO, VIDEOS, all_videos, final_video, load_json, scene_ids, video_dir
 from .voice import (
@@ -196,10 +197,33 @@ def cmd_clean(a):
     print(f"freed {freed / 1e6:.0f} MB")
 
 
+def cmd_keys(a):
+    """Show, save, or remove the API keys people plug in."""
+    if a.action:
+        if os.environ.get("UNFOLD_JOB"):
+            raise SystemExit("keys cannot be changed from a background run")
+        if not a.provider:
+            raise SystemExit(f"say which key: unfold keys {a.action} anthropic|openai|elevenlabs")
+        key = (
+            getpass.getpass(f"{keys.NAMES[a.provider]} key (hidden): ")
+            if a.action == "set"
+            else None
+        )
+        try:
+            keys.save(a.provider, key)
+        except ValueError as e:
+            raise SystemExit(str(e)) from None
+    for provider, info in keys.status().items():
+        state = f"ends in {info['ends']} ({'from your environment' if info['source'] == 'environment' else 'saved'})"
+        print(f"{keys.NAMES[provider]:11} {state if info['set'] else 'not set'}")
+    print(f"\nsaved keys live in {keys.FILE}")
+
+
 def cmd_where(a):
     print(f"repo:   {REPO}")
     print(f"videos: {VIDEOS}")
     print(f"skill:  {REPO / 'skill'}")
+    print(f"keys:   {keys.FILE}")
 
 
 def cmd_web(a):
@@ -259,6 +283,11 @@ def cmd_doctor(a):
         "System Settings > Accessibility > Spoken Content"
     )
     check(premium, "premium macOS voices", ", ".join(premium[:4]), hint)
+    for provider, info in keys.status().items():
+        use = "or sign in to Claude Code" if provider == "anthropic" else "for its voices"
+        ends = f"ends in {info['ends']}" if info["set"] else ""
+        fix = f"optional: unfold keys set {provider} ({use})"
+        check(info["set"], f"{keys.NAMES[provider]} key", ends, fix)
     skill = Path.home() / ".claude" / "skills" / "unfold"
     link = f"ln -s {REPO / 'skill'} {skill}"
     check(skill.exists(), "/unfold skill", str(skill.resolve()) if skill.exists() else "", link)
@@ -285,10 +314,12 @@ def cmd_voices(a):
     kokoro = [v for v in kokoro_voices() if v.startswith(("af_", "am_", "bf_", "bm_"))]
     print("kokoro:     " + (", ".join(f"kokoro:{v}" for v in kokoro) or f"({kokoro_status()})"))
     print("macOS say:  " + ", ".join(f"say:{v}" for v in say_voices()))
-    openai = ", ".join(f"openai:{v}" for v in openai_voices()) or "(set OPENAI_API_KEY)"
+    openai = (
+        ", ".join(f"openai:{v}" for v in openai_voices()) or "(add a key: unfold keys set openai)"
+    )
     eleven = ", ".join(f"elevenlabs:{v['id']} ({v['name']})" for v in elevenlabs_voices())
     print(f"openai:     {openai}")
-    print(f"elevenlabs: {eleven or '(set ELEVENLABS_API_KEY)'}")
+    print(f"elevenlabs: {eleven or '(add a key: unfold keys set elevenlabs)'}")
     print(f"\ndefault for new videos: {default_voice()}")
     print("preview one:  unfold voices --preview kokoro:af_heart")
 
@@ -368,7 +399,11 @@ def main(argv=None):
     s.add_argument("--port", type=int, default=8765)
     s.add_argument("--no-open", action="store_true", help="don't open a browser")
 
-    command("where", cmd_where, "print where the repo, videos, and skill are")
+    s = command("keys", cmd_keys, "show, save, or remove API keys (Anthropic, OpenAI, ElevenLabs)")
+    s.add_argument("action", nargs="?", choices=["set", "remove"])
+    s.add_argument("provider", nargs="?", choices=list(keys.PROVIDERS))
+
+    command("where", cmd_where, "print where the repo, videos, skill, and saved keys are")
     command("doctor", cmd_doctor, "check that everything a render needs is installed")
 
     s = command("voices", cmd_voices, "list voices, preview one, or install the local kokoro voice")

@@ -22,5 +22,6 @@ case ":$PATH:" in
      echo "  echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.zshrc" ;;
 esac
 command -v claude >/dev/null || echo "Install Claude Code to make videos: https://claude.com/claude-code"
+echo "Sign in to Claude Code, or add your own key: unfold keys set anthropic"
 echo "For a natural free voice: unfold voices --install kokoro"
 echo "Then start the web app: unfold web"

@@ -13,6 +13,7 @@ subagent judges renders, so you never grade your own frames.
 repo folder (written `<repo>` below), the videos folder, and this skill's folder; do not derive the
 repo from the skill's own path, which may be a link. Videos live in `<repo>/videos/<name>/`.
 `unfold status <name>` shows where any video stands, so a stopped session resumes from its files.
+Paid voices and API use need keys: `unfold keys` shows which are set.
 
 **Arguments.** `/unfold <arXiv id | link | pdf | video name> [level=grad] [minutes=5] [focus="sections"] [voice=kokoro:af_heart]`.
 Levels: highschool, undergrad, grad, expert. Voices: `kokoro:<voice>`, `say:<macOS voice>[@wpm]`,

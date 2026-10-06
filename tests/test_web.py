@@ -165,6 +165,30 @@ def test_only_web_links_reach_the_page(videos):
     assert library.paper_info(videos)["url"] == "https://arxiv.org/abs/2307.15771"
 
 
+def test_keys_go_in_but_never_come_out(server, tmp_path, monkeypatch):
+    from unfold import keys
+
+    monkeypatch.setattr(keys, "FILE", tmp_path / "keys.json")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    body = json.dumps({"provider": "anthropic", "key": "sk-ant-secret-wxyz"}).encode()
+    status, _, saved = request(server, "POST", "/api/keys", {"X-Unfold": "1"}, body)
+    assert status == 200 and json.loads(saved)["anthropic"] == {
+        "set": True,
+        "source": "saved",
+        "ends": "wxyz",
+    }
+    status, _, shown = request(server, "GET", "/api/keys")
+    assert status == 200 and b"secret" not in shown
+    status, _, refused = request(
+        server,
+        "POST",
+        "/api/keys",
+        {"X-Unfold": "1"},
+        json.dumps({"provider": "anthropic", "key": "nope"}).encode(),
+    )
+    assert status == 400 and "Anthropic" in json.loads(refused)["error"]
+
+
 def test_background_run_command(videos, monkeypatch):
     started = {}
 
