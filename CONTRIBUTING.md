@@ -27,6 +27,7 @@ the rest.
 - `uv run pytest` (or `.venv/bin/python -m pytest -q tests`): unit tests.
 - `unfold doctor`: check dependencies. `unfold render <video> --scene sNN`: sandboxed low-res render.
 - `unfold web`: the web app at http://localhost:8765. `unfold where`: repo, videos, skill, keys paths.
+- Detailed reference: `docs/how-it-works.md`; keep it in step with code changes.
 - `unfold render examples/reference`: smoke test for style changes (expect 0 layout defects).
 
 ## Conventions

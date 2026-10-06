@@ -8,6 +8,8 @@ critiques each rendered scene until it passes, and the result is an MP4 with cha
 A local web app lets you start videos, watch them being made, and watch the results with a synced
 transcript and a question bar that answers questions about the part of the video you are in.
 
+How it works, in depth: [docs/how-it-works.md](docs/how-it-works.md).
+
 ## Requirements
 
 - macOS (the narration, render sandbox, and fonts use macOS features)
