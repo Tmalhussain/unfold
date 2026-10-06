@@ -12,6 +12,7 @@ import contextlib
 import json
 import os
 from pathlib import Path
+from types import ModuleType
 
 import numpy as np
 import yaml
@@ -701,10 +702,14 @@ class UnfoldScene(MovingCameraScene):
         out.write_text(json.dumps(report, indent=2))
 
 
-# Scene files do `from unfold.style import *`; keep helper modules out of that namespace.
+# Scene files do `from unfold.style import *`: they get the drawing API and numpy, but no other
+# modules and none of Manim's config, file, or process helpers.
+_HELPERS = ("manim._config", "manim.utils.file_ops", "manim.utils.commands", "importlib", "logging")
 __all__ = [
     n
-    for n in dir()
+    for n, v in dict(globals()).items()
     if not n.startswith("_")
-    and n not in {"os", "json", "contextlib", "Path", "yaml", "annotations", "split_symbols"}
+    and (n == "np" or not isinstance(v, ModuleType))
+    and not (getattr(v, "__module__", None) or "").startswith(_HELPERS)
+    and n not in {"Path", "ModuleType", "annotations", "split_symbols"}
 ]

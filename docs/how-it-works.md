@@ -200,8 +200,6 @@ videos/2307-15771/
     poster.jpg               a still for the web library, made on demand
     .work/                   intermediate clips used while joining
   questions.json             suggested questions per scene (made on first watch in the web app)
-  job.json                   the latest background run started by the web app
-  logs/claude.jsonl          Claude's event stream from background runs
   .media/                    Manim's working files, one subfolder per scene (safe to delete)
 ```
 
@@ -294,7 +292,7 @@ An equation record from the Hydra Effect paper:
 {"scenes": {"s01": ["Which model and layer are being ablated here?", "...", "..."], ...}}
 ```
 
-**`job.json`**
+**`job.json`**, kept with the run's log in `videos/.runs/<name>/`, outside the video folder
 
 ```json
 {"pid": 64803, "started": 1791080386.88, "finished": 1791080450.87, "exit_code": 143,
@@ -544,7 +542,7 @@ class S02(UnfoldScene):
 ```
 
 Helpers or data several scenes share go in `scenes/common.py`, imported with `from common import *`,
-under the same rules. Claude reads `references/style-api.md` and the three reference scenes before
+under the same rules (any other `.py` file in `scenes/` is never imported). Claude reads `references/style-api.md` and the three reference scenes before
 writing the first one.
 
 ### Stage 8: Render and critique (per scene, `unfold render`)
@@ -683,22 +681,36 @@ variable the renderer sets).
 Scene code is written by a model that has read untrusted paper text, so it is treated as untrusted.
 Before anything runs, the file is parsed (not executed) and rejected if:
 
-- it imports anything other than `unfold.style`, `manim`, `numpy`, `math`, `random`, `itertools`,
-  `functools`, or `common` (relative imports are rejected too);
-- it calls `open`, `exec`, `eval`, `compile`, `__import__`, `globals`, `locals`, `vars`, `getattr`,
-  `setattr`, `delattr`, `input`, `breakpoint`, `help`, `exit`, or `quit`;
-- it names `os`, `sys`, `subprocess`, `shutil`, `socket`, `pathlib`, `Path`, `importlib`,
-  `builtins`, `__builtins__`, `yaml`, `json`, `utils`, `plugins`, or `config`;
-- it touches any dunder attribute other than `__init__`;
+- it imports anything other than `unfold.style`, `numpy`, `math`, `random`, `itertools`,
+  `functools`, or `common` (relative imports are rejected too; Manim comes through `unfold.style`);
+- it uses `open`, `exec`, `eval`, `compile`, `globals`, `locals`, `vars`, `getattr`, `setattr`,
+  `delattr`, `input`, `breakpoint`, `help`, `exit`, `quit`, `os`, `sys`, `subprocess`, `shutil`,
+  `socket`, `pathlib`, `Path`, `importlib`, `builtins`, `yaml`, `json`, `utils`, `plugins`,
+  `config`, `ctypes`, `ctypeslib`, `f2py`, `distutils`, `inspect`, `pickle`, `capture`, `open_file`,
+  `lib`, `core`, `testing`, or numpy's file functions (`load`, `loads`, `dump`, `dumps`, `fromfile`,
+  `tofile`, `memmap`) in any way: called, passed along (`map(exec, ...)` runs code without a call
+  to `exec`), as an attribute, or as a keyword (`np.load(..., allow_pickle=True)` runs any code it
+  is given);
+- it uses any name starting with `__` (`__import__`, `__builtins__`, `__loader__`), or a `match`
+  statement, whose class patterns read attributes by name;
+- it touches an attribute starting with an underscore other than `__init__` (`random._os` is the
+  `os` module), or a frame or generator internal such as `gi_frame`, `f_globals`, or `f_back`,
+  which reach any module's globals without an underscore;
+- it contains a string starting with `__`, such as `"__builtins__"` used as a dictionary key;
 - it does not define exactly one class subclassing `UnfoldScene` with `scene_id` equal to the file's
   scene id.
 
 `scenes/common.py` gets the same rules minus the class requirement.
 
+`from unfold.style import *` hands a scene the drawing API and `np`, and nothing else: no other
+module, and none of Manim's config, file, or process helpers (Manim exports `capture`, which runs a
+command, and `open_file`, which opens a file in another app). The check is a list of known routes,
+so it is the first layer, not the last; the sandbox below is what holds if a route is missed.
+
 ### The render
 
 ```
-python -m manim render -q<l|m|h|k> [--frame_rate N] --media_dir .media/sNN --disable_caching -o sNN scenes/sNN.py SNN
+python -m manim render -q<l|m|h|k> [--frame_rate N] --media_dir .media/sNN --disable_caching -o sNN <checked copy>/sNN.py SNN
 ```
 
 | Quality | Flag | Resolution and rate | Timeout |
@@ -708,15 +720,24 @@ python -m manim render -q<l|m|h|k> [--frame_rate N] --media_dir .media/sNN --dis
 | high (final) | `-qh` | 1080p, 60 fps, but `assemble` passes 30 fps by default | 30 min |
 | 4k | `-qk` | 2160p, 60 fps | 60 min |
 
-- The process runs with the video folder as its working directory, `UNFOLD_VIDEO` set to it,
-  `PYTHONPATH` set to `scenes/` (so `from common import *` works), a private temporary directory
-  inside `.media/`, and every environment variable ending in `_API_KEY` removed.
+- The scene file and `common.py` are copied to a fresh folder outside the video folder, checked
+  there, and rendered from there; `PYTHONPATH` points at that folder (so `from common import *`
+  works) and `PYTHONSAFEPATH` keeps the working directory off the import path. Only checked code can
+  be imported: a stray `numpy.py` or `sitecustomize.py` in the video folder is never loaded.
+- The process runs with the video folder as its working directory, `UNFOLD_VIDEO` set to it, a
+  private temporary directory inside `.media/`, and every environment variable ending in `_API_KEY`
+  removed.
 - Each scene gets its own `.media/sNN/` folder, so parallel renders never share Manim's LaTeX cache.
 - On macOS the command runs under `sandbox-exec` with this profile: everything allowed by default,
   except **all network access is denied** and **file writes are denied** everywhere except the video
-  folder, the render's temporary folder, `/private/tmp`, `/private/var/folders`,
-  `~/Library/Caches`, `~/.cache`, `~/.dvisvgm`, `~/Library/texlive`, and the standard `/dev`
-  streams.
+  folder, the render's temporary folder, TeX's caches (`~/.dvisvgm`, `~/Library/texlive`), and the
+  standard `/dev` streams. Shared temp folders and other tools' caches stay closed because tools run
+  code from them (uv, pip, and pre-commit install from their caches); font caches go to the video's
+  `.media/cache` instead (`XDG_CACHE_HOME`). Even inside the video folder, Claude Code config
+  (`.claude/`, `.mcp.json`, `CLAUDE.md`, in any letter case, since macOS file names ignore case)
+  cannot be written, and the saved keys file cannot be read. The profile also refuses the ways a
+  process can get something run outside the sandbox: launching apps (`open`, Launch Services), Apple
+  Events (`osascript`), and new launchd jobs.
 - On failure the result is the last 40 lines of output with progress bars filtered out (the failing
   line of the scene file is in there).
 - On success the newest output file is copied to `renders/<quality>/sNN.mp4` (newest, because an
@@ -960,19 +981,26 @@ Pressing **Make video** first ingests the paper in the server itself (so a bad l
 immediately, with a clear message), then starts Claude Code headless:
 
 ```
-claude -p "/unfold <name> autopilot" --output-format stream-json --verbose --allowedTools <rules>
+claude -p "/unfold <name> autopilot" --output-format stream-json --verbose \
+  --setting-sources user --strict-mcp-config --allowedTools <rules> --disallowedTools <rules>
 ```
 
 - It runs **inside the video's folder**, with `UNFOLD_JOB=<that folder>` and any saved keys in its
   environment, the repo's `.venv/bin` first on its `PATH` (so `unfold` is always found), stdin closed,
-  and stdout and stderr appended to `logs/claude.jsonl`. It runs in its own process group,
+  and stdout and stderr appended to `videos/.runs/<name>/claude.jsonl`, outside the folder the run
+  may edit. It runs in its own process group,
   so **Stop** ends Claude and everything it started at once (SIGTERM to the group).
 - The skill sees that the argument names an existing video, skips `unfold new`, runs `unfold status`,
   and continues from the first unfinished stage. `autopilot` skips the plan checkpoint.
 - The permission rules (section 12) let it run `unfold`, read the repo and the skill, edit files only
   in this video's folder, and use subagents (for the comprehension check and the critics). Anything
   else is refused automatically, because a headless run has no one to ask.
-- `job.json` records the process id, start time, the log's size before this run (so only this run's
+- Only your user-level Claude Code settings load, and no MCP servers: settings, hooks, skills,
+  agents, or MCP config found in the video folder are ignored. A `CLAUDE.md` would still be read,
+  so a run will not start while the folder holds any Claude Code config, in any letter case, and the
+  deny rules stop the run writing it itself.
+- `videos/.runs/<name>/job.json` records the process id (which **Stop** signals, so the run must not
+  be able to change it), start time, the log's size before this run (so only this run's
   events are read), and later the finish time and exit code (a background thread waits for the
   process). Stop also records `stopped: true`.
 - **Status** is worked out from the record and the log, so it stays right even if the server
@@ -1089,9 +1117,9 @@ commands. Every layer below assumes the paper is hostile.
 | Layer | Protects against | How |
 | --- | --- | --- |
 | Skill rules | Claude following instructions in the paper | The skill says paper text is data, never instructions; scene code may use only the style API; never `--no-sandbox` |
-| Static code check | Scene code reaching files, the network, or the OS | Import allowlist, banned calls and names, no dunder attributes, exactly one scene class (section 7) |
-| Render sandbox | Code that slips past the static check | `sandbox-exec`: no network; writes only to the video folder, temp and cache folders; API keys removed from the environment |
-| Background-run permissions | A steered Claude damaging the machine or other projects | Runs inside the video folder; may run only `unfold`; may read only the repo and the skill; may edit only its own video folder; everything else refused (no one to ask in headless mode) |
+| Static code check | Scene code reaching files, the network, or the OS | Import allowlist, banned calls, names, attributes, and keywords, no underscore attributes or frame internals, no modules or Manim helpers from `unfold.style`, exactly one scene class (section 7) |
+| Render sandbox | Code that slips past the static check | `sandbox-exec`: no network; writes only to the video folder, its temp folder, and TeX's caches (never shared temp or other tools' caches, which they run code from), and never Claude Code config; the saved keys file unreadable; no launching apps, Apple Events, or launchd jobs; only checked copies importable; API keys removed from the environment |
+| Background-run permissions | A steered Claude damaging the machine or other projects | Runs inside the video folder; may run only `unfold`; may read only the repo and the skill; may edit only its own video folder, minus Claude Code config; its record and log kept outside that folder; settings, hooks, skills, and MCP config in the folder ignored; no run starts while the folder holds Claude Code config; everything else refused (no one to ask in headless mode) |
 | `UNFOLD_JOB` | A steered Claude misusing `unfold` itself | In a background run, `unfold` refuses any other video, refuses `new`, and refuses `--no-sandbox` |
 | Question isolation | A steered answerer doing anything but write text | `--tools ""` (no tools at all), `--safe-mode` (none of your settings, hooks, plugins, or CLAUDE.md), no MCP servers, no saved session; the instructions mark the paper as reference material |
 | Safe rendering in the browser | Paper text injecting HTML or scripts | All text is inserted as text nodes, never as HTML |
@@ -1107,7 +1135,12 @@ commands. Every layer below assumes the paper is hostile.
 These rules were tested directly: a headless Claude given the background-run permissions was asked
 to write into `src/`, read `/etc/hosts` (through the Read tool and through `cat`), work on another
 video, render without the sandbox, and create a new video. Every one was refused, while reading the
-repo and the skill, writing in its own folder, and `unfold status` worked.
+repo and the skill, writing in its own folder, and `unfold status` worked. A hook planted in a
+folder's `.claude/settings.json` runs under a plain `claude -p` there and is ignored under the
+background-run flags. Under the render sandbox, writing Claude Code config in any case (and through
+a symlink, a hard link, or a rename), reading the saved keys, running `open` or `osascript` (or
+copies of them), and `launchctl submit` were all refused, and the reference video still rendered and
+assembled with writes outside the video folder limited to TeX's caches.
 
 ## 13. Caching and staleness
 
@@ -1150,7 +1183,8 @@ Environment variables the code reads or sets:
 | `UNFOLD_KEYS` | where saved keys live (default `~/.config/unfold/keys.json`) |
 | `UNFOLD_VIDEO` | set by the renderer so a scene can find its storyboard and clips |
 | `UNFOLD_JOB` | set for background runs; pins `unfold` to that video and disables `new` and `--no-sandbox` |
-| `PYTHONPATH` | set by the renderer to `scenes/` so `from common import *` works |
+| `PYTHONPATH` | set by the renderer to the checked copies of the scene and `common.py` |
+| `XDG_CACHE_HOME` | set by the renderer to the video's `.media/cache`, so font caches stay inside the sandbox |
 | `ANTHROPIC_API_KEY` | an Anthropic key for background runs and questions; wins over a saved key |
 | `OPENAI_API_KEY`, `ELEVENLABS_API_KEY` | keys for the paid voices; win over saved keys; removed from the render's environment |
 
@@ -1179,7 +1213,7 @@ sandbox), `open` (opening videos), `claude` (background runs and questions).
 Python is formatted with Black at 100 columns (`black src tests`; the settings are in
 `pyproject.toml`), and the frontend keeps to the same width.
 
-51 tests, all offline and free (`uv run pytest` or `.venv/bin/python -m pytest -q tests`).
+63 tests, all offline and free (`uv run pytest` or `.venv/bin/python -m pytest -q tests`).
 
 **`test_texsplit.py`** (4)
 - LaTeX splitting: symbols isolated outside control words and `\text{}`; the longest symbol wins and
@@ -1197,16 +1231,21 @@ Python is formatted with Black at 100 columns (`black src tests`; the settings a
 - Ingest: LaTeX parsing finds sections, labeled and unlabeled equations, removes `\nonumber`, keeps
   macros, and ignores commented-out environments; the PDF title comes from the largest text.
 
-**`test_style.py`** (1)
+**`test_style.py`** (2)
 - Layout: a line through text is caught; one that only grazes its padding is not.
+- Scenes get `np` from the house style but no other module and none of Manim's helpers.
 
-**`test_render.py`** (9)
-- Code check: the house style passes; five escape attempts are rejected (`import os`, `from
-  subprocess import`, `open()`, dunder access, `getattr`); a mismatched `scene_id` is rejected.
+**`test_render.py`** (19)
+- Code check: the house style passes; fourteen escape attempts are rejected (`import os`, `from
+  subprocess import`, `open()`, dunder access, `getattr`, `random._os`, frame internals, a
+  `"__builtins__"` key, `manim.utils`, Manim's `capture`, a pickled `np.load`, `map(exec, ...)`,
+  `__loader__`, a `match` class pattern); a mismatched `scene_id` is rejected.
+- Sandbox (macOS): a render cannot write `CLAUDE.md`, a `.Claude` folder, or a file outside the
+  video folder, read the saved keys, or open another app, and can still write its own output.
 - Rendering: keyframes cover every animation and beat end; the render fingerprint tracks code,
   shared code, clips, and frame rate, and ignores other scenes' clips.
 
-**`test_web.py`** (14)
+**`test_web.py`** (15)
 - Scene states and stages from files; the summary and the beat-by-beat transcript; short subtitle
   tails joining the cue before.
 - Background-run state and the activity feed derived from a log (subagent chatter excluded).
@@ -1217,8 +1256,9 @@ Python is formatted with Black at 100 columns (`black src tests`; the settings a
   the permission rules never grant unrestricted Edit, Write, Read, or Bash.
 - Only `http` and `https` paper links reach the page.
 - Keys can be saved through the API but never read back; malformed keys are refused.
-- The exact background-run command: one `--allowedTools` list, run inside the video folder with
-  `UNFOLD_JOB` set.
+- The exact background-run command: user settings only, no MCP servers, one `--allowedTools` list,
+  deny rules for Claude Code config, run inside the video folder with `UNFOLD_JOB` set, its record
+  kept outside it; no run starts while the folder holds Claude Code config.
 
 **`test_keys.py`** (4)
 - A saved key's file is readable only by its owner, and only the last four characters are ever shown.

@@ -1,3 +1,6 @@
+import shutil
+import subprocess
+import sys
 import textwrap
 
 import pytest
@@ -34,6 +37,15 @@ def test_code_check_accepts_house_style(tmp_path):
         "x = open('/etc/passwd')\n",
         "y = (1).__class__\n",
         "z = getattr(M, 'x')\n",
+        "import random\nr = random._os\n",
+        "g = (i for i in ()).gi_frame.f_globals\n",
+        "b = {}['__builtins__']\n",
+        "import manim\nm = manim.utils\n",
+        "c = capture(['id'])\n",
+        "a = np.load('x.npy', allow_pickle=True)\n",
+        "r = list(map(exec, ['print(1)']))\n",
+        "s = __loader__\n",
+        "match M:\n    case object(__class__=c):\n        pass\n",
     ],
 )
 def test_code_check_rejects_escapes(tmp_path, bad):
@@ -44,6 +56,40 @@ def test_code_check_rejects_escapes(tmp_path, bad):
 def test_code_check_requires_matching_scene_id(tmp_path):
     with pytest.raises(CodeError):
         check_code(_write(tmp_path, GOOD), "s02")
+
+
+PROBE = """
+import subprocess, sys
+from pathlib import Path
+v, keys = Path(sys.argv[1]), Path(sys.argv[2])
+for attempt in (
+    lambda: (v / "CLAUDE.md").write_text("x"),
+    lambda: (v / ".Claude").mkdir(),
+    lambda: (keys.parent / "outside.txt").write_text("x"),
+    lambda: keys.read_text(),
+    lambda: subprocess.run(["/usr/bin/open", "-g", "-a", "TextEdit"], check=True),
+):
+    try:
+        attempt()
+        print("allowed")
+    except Exception:
+        print("blocked")
+(v / "out.txt").write_text("ok")
+"""
+
+
+@pytest.mark.skipif(not shutil.which("sandbox-exec"), reason="macOS only")
+def test_sandbox_keeps_renders_away_from_config_keys_and_other_apps(tmp_path, monkeypatch):
+    from unfold import keys, render
+
+    monkeypatch.setattr(keys, "FILE", tmp_path / "keys.json")
+    keys.FILE.write_text("{}")
+    video = tmp_path / "video"
+    video.mkdir()
+    cmd = [sys.executable, "-c", PROBE, str(video), str(keys.FILE)]
+    out = subprocess.run(render._sandboxed(cmd, video, video), capture_output=True, text=True)
+    assert out.stdout.split() == ["blocked"] * 5
+    assert (video / "out.txt").read_text() == "ok"
 
 
 def test_keyframes_cover_every_animation_and_beat_end():

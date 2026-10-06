@@ -1,8 +1,10 @@
 """Check scene code, render it in a sandbox, and cut keyframes for the critic.
 
 Generated scene code is untrusted. It must pass an import allowlist and a
-few static rules, then renders under ``sandbox-exec`` with no network and
-writes limited to the video folder and caches.
+few static rules, then renders under ``sandbox-exec`` with no network, writes
+limited to the video folder and TeX's caches, no Claude Code config written
+there (the next background run starts in that folder), no reading the saved
+keys, and no launching apps or other ways out of the sandbox.
 """
 
 from __future__ import annotations
@@ -16,21 +18,31 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from . import keys
 from .project import PYTHON, ffmpeg, storyboard
 
-ALLOWED_IMPORTS = set("unfold.style manim numpy math random itertools functools common".split())
-BANNED_CALLS = set(
-    "open exec eval compile __import__ globals locals vars getattr setattr delattr "
-    "input breakpoint help exit quit".split()
-)
+ALLOWED_IMPORTS = set("unfold.style numpy math random itertools functools common".split())
+# Banned however they are used: called, passed along (`map(exec, ...)`), or as an attribute.
 BANNED_NAMES = set(
-    "os sys subprocess shutil socket pathlib Path importlib builtins __builtins__ "
-    "yaml json utils plugins config".split()
+    "open exec eval compile globals locals vars getattr setattr delattr input breakpoint help "
+    "exit quit os sys subprocess shutil socket pathlib Path importlib builtins yaml json utils "
+    "plugins config ctypes ctypeslib f2py distutils inspect pickle capture open_file lib core "
+    "testing load loads dump dumps fromfile tofile memmap allow_pickle".split()
+)
+# Frames and generators hand out any module's globals without a dunder in sight.
+BANNED_ATTRS = BANNED_NAMES | set(
+    "gi_frame gi_code cr_frame ag_frame f_back f_globals f_locals f_builtins tb_frame".split()
 )
 QUALITY = {"low": "l", "medium": "m", "high": "h", "4k": "k"}  # 480p15, 720p30, 1080p60, 2160p60
 TIMEOUT = {"low": 600, "medium": 900, "high": 1800, "4k": 3600}
 
-SANDBOX_PROFILE = """
+
+def _anycase(word: str) -> str:
+    """A pattern for a file name as macOS matches it: in any case, with the long s (ſ) as an s."""
+    return "".join(f"({c}|{c.upper()}{'|ſ' * (c == 's')})" if c.isalpha() else c for c in word)
+
+
+SANDBOX_PROFILE = rf"""
 (version 1)
 (allow default)
 (deny network*)
@@ -38,14 +50,22 @@ SANDBOX_PROFILE = """
 (allow file-write*
   (subpath (param "VIDEO"))
   (subpath (param "TMP"))
-  (subpath "/private/tmp")
-  (subpath "/private/var/folders")
-  (subpath (param "CACHE1"))
-  (subpath (param "CACHE2"))
-  (subpath (param "CACHE3"))
-  (subpath (param "CACHE4"))
+  (subpath (param "DVISVGM"))
+  (subpath (param "TEXLIVE"))
   (literal "/dev/null") (literal "/dev/stdout") (literal "/dev/stderr") (literal "/dev/tty")
   (regex #"^/dev/fd/"))
+(deny file-write*
+  (regex #"/\.{_anycase("claude")}(/|$)")
+  (regex #"/\.{_anycase("mcp")}\.{_anycase("json")}$")
+  (regex #"/{_anycase("claude")}(\.{_anycase("local")})?\.{_anycase("md")}$"))
+(deny file-read* (literal (param "KEYS")))
+(deny process-exec (literal "/usr/bin/open") (literal "/usr/bin/osascript"))
+(deny lsopen)
+(deny appleevent-send)
+(deny job-creation)
+(deny mach-lookup
+  (global-name "com.apple.coreservices.launchservicesd")
+  (global-name-regex #"^com\.apple\.lsd\."))
 """
 
 
@@ -63,20 +83,19 @@ def _rule_problems(tree) -> list[str]:
         elif isinstance(node, ast.ImportFrom):
             if node.module not in ALLOWED_IMPORTS or node.level:
                 problems.append(f"line {node.lineno}: from {node.module} import is not allowed")
-        elif (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id in BANNED_CALLS
-        ):
-            problems.append(f"line {node.lineno}: call to {node.func.id}() is not allowed")
-        elif isinstance(node, ast.Name) and node.id in BANNED_NAMES:
+        elif isinstance(node, ast.Name) and (node.id in BANNED_NAMES or node.id.startswith("__")):
             problems.append(f"line {node.lineno}: name {node.id!r} is not allowed")
-        elif (
-            isinstance(node, ast.Attribute)
-            and node.attr.startswith("__")
-            and node.attr != "__init__"
+        elif isinstance(node, ast.Match):
+            # class patterns read attributes by name: `case object(__class__=c)`
+            problems.append(f"line {node.lineno}: match statements are not allowed")
+        elif isinstance(node, ast.keyword) and node.arg in BANNED_NAMES:
+            problems.append(f"line {node.lineno}: argument {node.arg} is not allowed")
+        elif isinstance(node, ast.Attribute) and (
+            node.attr.startswith("_") and node.attr != "__init__" or node.attr in BANNED_ATTRS
         ):
-            problems.append(f"line {node.lineno}: dunder attribute {node.attr} is not allowed")
+            problems.append(f"line {node.lineno}: attribute {node.attr} is not allowed")
+        elif isinstance(node, ast.Constant) and str(node.value).startswith("__"):
+            problems.append(f"line {node.lineno}: the string {node.value!r} is not allowed")
     return problems
 
 
@@ -128,10 +147,9 @@ def _sandboxed(cmd: list[str], video: Path, tmp: Path) -> list[str]:
     params = {
         "VIDEO": str(video.resolve()),
         "TMP": str(tmp.resolve()),
-        "CACHE1": str(home / "Library" / "Caches"),
-        "CACHE2": str(home / ".cache"),
-        "CACHE3": str(home / ".dvisvgm"),
-        "CACHE4": str(home / "Library" / "texlive"),
+        "DVISVGM": str(home / ".dvisvgm"),
+        "TEXLIVE": str(home / "Library" / "texlive"),
+        "KEYS": str(keys.FILE.expanduser().resolve()),
     }
     profile = tmp / "unfold.sb"
     profile.write_text(SANDBOX_PROFILE)
@@ -163,25 +181,33 @@ def render_scene(
         raise SystemExit(f"missing {code}")
     # Taken before rendering, so an edit made mid-render counts as a change.
     stamp = inputs_hash(video, scene_id, fps)
-    cls = check_code(code, scene_id)
-    common = code.parent / "common.py"
-    if common.exists():
-        check_common(common)
     # One folder per scene: parallel renders must not share the LaTeX cache.
     media = video / ".media" / scene_id
     report = video / "checks" / f"{scene_id}.layout.json"
-    report.unlink(missing_ok=True)
     env = {k: v for k, v in os.environ.items() if not k.endswith("_API_KEY")}
     env["UNFOLD_VIDEO"] = str(video.resolve())
-    env["PYTHONPATH"] = str(code.parent.resolve())  # lets scenes `from common import *`
+    env["PYTHONSAFEPATH"] = "1"  # the working directory stays off the import path
+    env["XDG_CACHE_HOME"] = str(video.resolve() / ".media" / "cache")  # font caches, kept in reach
     (video / ".media").mkdir(exist_ok=True)
-    with tempfile.TemporaryDirectory(dir=video / ".media") as t:
-        tmp = Path(t)
+    with (
+        tempfile.TemporaryDirectory(prefix="unfold-") as s,
+        tempfile.TemporaryDirectory(dir=video / ".media") as t,
+    ):
+        # The checked copies, kept outside the video folder, are the only code a scene can import.
+        src, tmp = Path(s), Path(t)
+        shutil.copy(code, src)
+        cls = check_code(src / code.name, scene_id)
+        if (code.parent / "common.py").exists():
+            shutil.copy(code.parent / "common.py", src)
+            check_common(src / "common.py")
+        report.unlink(missing_ok=True)
+        env["PYTHONPATH"] = str(src)  # lets scenes `from common import *`
         env["TMPDIR"] = str(tmp)
         cmd = [str(PYTHON), "-m", "manim", "render", f"-q{QUALITY[quality]}"]
         if fps:  # after the quality flag, which would otherwise reset the frame rate
             cmd += ["--frame_rate", str(fps)]
-        cmd += ["--media_dir", str(media), "--disable_caching", "-o", scene_id, str(code), cls]
+        cmd += ["--media_dir", str(media), "--disable_caching", "-o", scene_id]
+        cmd += [str(src / code.name), cls]
         if sandbox:
             cmd = _sandboxed(cmd, video, tmp)
         try:

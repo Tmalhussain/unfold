@@ -1,3 +1,13 @@
+def test_scenes_get_numpy_but_no_other_modules_or_helpers():
+    import types
+
+    from unfold import style
+
+    names = {n: getattr(style, n) for n in style.__all__}
+    assert [n for n, v in names.items() if isinstance(v, types.ModuleType)] == ["np"]
+    assert "Circle" in names and not {"capture", "open_file", "config", "logger"} & set(names)
+
+
 def test_segment_box_crossing():
     import numpy as np
 
